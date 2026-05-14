@@ -1,6 +1,5 @@
 #include <gst/gst.h>
-
-#define SOURCE_URI "https://gstreamer.freedesktop.org/data/media/sintel_trailer-480p.webm"
+#include "prefix.h"
 
 typedef struct {
     GstElement *pipeline;
@@ -39,7 +38,7 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    g_object_set(data.source, "uri", "https://gstreamer.freedesktop.org/data/media/sintel_trailer-480p.webm", NULL);
+    g_object_set(data.source, "uri", SOURCE_URI, NULL);
     g_signal_connect_data(data.source, "pad-added", G_CALLBACK(pad_added_handler), &data, NULL, (GConnectFlags) 0);
 
     g_print("Setting state to running");
@@ -89,6 +88,9 @@ int main(int argc, char *argv[]) {
         }
     } while (!done);
 
+    gst_object_unref(bus);
+    gst_element_set_state(data.pipeline, GST_STATE_NULL);
+    gst_object_unref(data.pipeline);
     return 0;
 }
 
