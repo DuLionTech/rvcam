@@ -10,7 +10,7 @@ typedef struct {
     GstElement *sink;
 } StreamData;
 
-static void pad_added_handler(GstElement *src, GstPad *pad, StreamData *sd);
+static void pad_added_handler(GstElement *src, GstPad *pad, const StreamData *sd);
 
 int main(int argc, char *argv[]) {
     // StreamData data;
@@ -92,36 +92,39 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-static void pad_added_handler(GstElement *src, GstPad *new_pad, StreamData *data) {
-    GstPad *sink_pad = gst_element_get_static_pad(data->convert, "sink");
+static void pad_added_handler(GstElement *src, GstPad *pad, const StreamData *sd) {
+    GstPad *sink_pad = gst_element_get_static_pad(sd->convert, "sink");
     GstPadLinkReturn ret;
-    GstCaps *new_pad_caps = NULL;
-    GstStructure *new_pad_struct = NULL;
-    const gchar *new_pad_type = NULL;
+    GstCaps *pad_caps = NULL;
+    GstStructure *pad_struct = NULL;
+    const gchar *pad_name = NULL;
+    const gchar *pad_type = NULL;
 
-    g_print("Received new pad '%s' from '%s':\n", GST_PAD_NAME(new_pad), GST_ELEMENT_NAME(new_pad));
+    pad_name = GST_PAD_NAME(pad);
+    g_print("Received new pad '%s' from '%s':\n", pad_name, GST_ELEMENT_NAME(src));
     if (gst_pad_is_linked(sink_pad)) {
         g_print("Convert sink pad already linked.\n");
         goto exit_a;
     }
 
-    new_pad_caps = gst_pad_get_current_caps(new_pad);
-    new_pad_struct = gst_caps_get_structure(new_pad_caps, 0);
-    new_pad_type = gst_structure_get_name(new_pad_struct);
-    if (!g_str_has_prefix(new_pad_type, "audio/x-raw")) {
-        g_print("In has type '%s' which is not raw audio. Ignoring.\n", new_pad_type);
+    pad_caps = gst_pad_get_current_caps(pad);
+    pad_struct = gst_caps_get_structure(pad_caps, 0);
+    pad_type = gst_structure_get_name(pad_struct);
+    g_print("Pad '%s' type '%s' has %d capabilities.\n", pad_name, pad_type, gst_caps_get_size(pad_caps));
+    if (!g_str_has_prefix(pad_type, "audio/x-raw")) {
+        g_print("Ignoring pad '%s' type '%s' as it is not raw audio.\n", pad_name, pad_type);
         goto exit_b;
     }
 
-    ret = gst_pad_link(new_pad, sink_pad);
+    ret = gst_pad_link(pad, sink_pad);
     if (GST_PAD_LINK_FAILED(ret)) {
-        g_print("Type is '%s' but the link failed.\n", new_pad_type);
+        g_print("Pad '%s' type '%s' could not be linked.\n", pad_name, pad_type);
     } else {
-        g_print("Link succeeded, type is '%s'.\n", new_pad_type);
+        g_print("Pad '%s' type '%s' linked to 'convert' pad 'sink'.\n", pad_name, pad_type, GST_PAD_NAME(sink_pad));
     }
 
 exit_a:
-    gst_caps_unref(new_pad_caps);
+    gst_caps_unref(pad_caps);
 
 exit_b:
     gst_object_unref(sink_pad);
