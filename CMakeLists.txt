@@ -6,13 +6,19 @@ find_package(PkgConfig REQUIRED)
 
 pkg_check_modules(GSTREAMER REQUIRED IMPORTED_TARGET gstreamer-1.0)
 pkg_check_modules(GST_APP REQUIRED IMPORTED_TARGET gstreamer-app-1.0)
+pkg_check_modules(GTK3 REQUIRED IMPORTED_TARGET gtk+-3.0)
 
 include_directories(include)
+include_directories(${GTK3_INCLUDE_DIRS})
+link_directories(${GTK3_LIBRARY_DIRS})
+add_definitions(${GTK3_CFLAGS_OTHER})
 
 add_executable(${PROJECT_NAME}_2 main_2.c)
 add_executable(${PROJECT_NAME}_3 main_3.c)
 add_executable(${PROJECT_NAME}_4 main_4.c)
+add_executable(${PROJECT_NAME}_5 main_5.c)
 
 target_link_libraries(${PROJECT_NAME}_2 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP)
 target_link_libraries(${PROJECT_NAME}_3 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP)
 target_link_libraries(${PROJECT_NAME}_4 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP)
+target_link_libraries(${PROJECT_NAME}_5 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP ${GTK3_LIBRARIES})
