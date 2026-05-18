@@ -26,6 +26,8 @@ static void delete_event_cb(GtkWidget *widget, GdkEvent *event, StreamData *data
 
 static void slider_cb(GtkRange *range, StreamData *data);
 
+static void size_allocate_cb(GtkWidget *widget, const GdkRectangle *allocation, StreamData *data);
+
 static void create_ui(StreamData *data);
 
 static gboolean refresh_ui(StreamData *data);
@@ -128,13 +130,13 @@ static void create_ui(StreamData *data) {
     g_signal_connect(G_OBJECT(window), "delete-event", G_CALLBACK(delete_event_cb), data);
 
     play_button = gtk_button_new_from_icon_name("media-playback-start", GTK_ICON_SIZE_SMALL_TOOLBAR);
-    g_signal_connect(play_button, "clicked", G_CALLBACK(play_cb), NULL);
+    g_signal_connect(play_button, "clicked", G_CALLBACK(play_cb), data);
 
     pause_button = gtk_button_new_from_icon_name("media-playback-pause", GTK_ICON_SIZE_SMALL_TOOLBAR);
-    g_signal_connect(pause_button, "clicked", G_CALLBACK(pause_cb), NULL);
+    g_signal_connect(pause_button, "clicked", G_CALLBACK(pause_cb), data);
 
     stop_button = gtk_button_new_from_icon_name("media-playback-stop", GTK_ICON_SIZE_SMALL_TOOLBAR);
-    g_signal_connect(stop_button, "clicked", G_CALLBACK(stop_cb), NULL);
+    g_signal_connect(stop_button, "clicked", G_CALLBACK(stop_cb), data);
 
     data->slider = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 100, 1);
     gtk_scale_set_draw_value(GTK_SCALE(data->slider), 0);
@@ -142,6 +144,10 @@ static void create_ui(StreamData *data) {
 
     data->streams_list = gtk_text_view_new();
     gtk_text_view_set_editable(GTK_TEXT_VIEW(data->streams_list), FALSE);
+    gtk_widget_set_size_request(GTK_WIDGET(data->streams_list), 200, -1);
+    gtk_text_view_set_left_margin(GTK_TEXT_VIEW(data->streams_list), 10);
+    gtk_text_view_set_right_margin(GTK_TEXT_VIEW(data->streams_list), 10);
+    gtk_text_view_set_top_margin(GTK_TEXT_VIEW(data->streams_list), 10);
 
     toolbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_box_pack_start(GTK_BOX(toolbar), play_button, FALSE, FALSE, 2);
@@ -157,23 +163,21 @@ static void create_ui(StreamData *data) {
     gtk_box_pack_start(GTK_BOX(child), view, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(child), toolbar, FALSE, FALSE, 2);
     gtk_container_add(GTK_CONTAINER(window), child);
-    gtk_window_set_default_size(GTK_WINDOW(window), 640, 480);
+    gtk_window_set_default_size(GTK_WINDOW(window), 1200, 480);
+    g_signal_connect(G_OBJECT(window), "size-allocate", G_CALLBACK(size_allocate_cb), data);
 
     gtk_widget_show_all(window);
 }
 
 static void play_cb(GtkButton *button, StreamData *data) {
-    g_print("Playing");
     gst_element_set_state(data->playbin, GST_STATE_PLAYING);
 }
 
 static void pause_cb(GtkButton *button, StreamData *data) {
-    g_print("Paused");
     gst_element_set_state(data->playbin, GST_STATE_PAUSED);
 }
 
 static void stop_cb(GtkButton *button, StreamData *data) {
-    g_print("Ready");
     gst_element_set_state(data->playbin, GST_STATE_READY);
 }
 
@@ -255,6 +259,10 @@ static void state_changed_cb(GstBus *bus, GstMessage *msg, StreamData *data) {
             refresh_ui(data);
         }
     }
+}
+
+static void size_allocate_cb(GtkWidget *widget, const GdkRectangle *allocation, StreamData *data) {
+    g_print("Window width: %d height: %d\n", allocation->width, allocation->height);
 }
 
 static void analyze_streams(StreamData *data) {
