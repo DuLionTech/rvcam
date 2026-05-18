@@ -6,7 +6,6 @@
 #include "prefix.h"
 
 typedef struct {
-    GtkApplication *app;
     GstElement *playbin;
     GtkWidget *sink_widget;
     GtkWidget *slider;
@@ -95,24 +94,26 @@ int main(int argc, char *argv[]) {
     g_signal_connect(G_OBJECT(bus), "message::eos", G_CALLBACK(eos_cb), &data);
     g_signal_connect(G_OBJECT(bus), "message::state-changed", G_CALLBACK(state_changed_cb), &data);
     g_signal_connect(G_OBJECT(bus), "message::application", G_CALLBACK(application_cb), &data);
-    gst_object_unref(bus);
 
     // Start playing
     ret = gst_element_set_state(data.playbin, GST_STATE_PLAYING);
     if (ret == GST_STATE_CHANGE_FAILURE) {
         g_printerr("Unable to set the playing state.\n");
+        GstMessage *msg = gst_bus_timed_pop_filtered(bus, 0, GST_MESSAGE_ERROR);
+        if (msg != NULL) {
+            error_cb(bus, msg, &data);
+            gst_message_unref (msg);
+        }
+        gst_element_set_state(data.playbin, GST_STATE_NULL);
         gst_object_unref(data.playbin);
-        gst_object_unref(videosink);
         return -1;
     }
 
     g_timeout_add_seconds(1, G_SOURCE_FUNC(refresh_ui), &data);
-    g_application_run(G_APPLICATION(data.app), argc, argv);
-    g_object_unref(data.app);
+    gtk_main();
+
     gst_element_set_state(data.playbin, GST_STATE_NULL);
     gst_object_unref(data.playbin);
-    gst_object_unref(videosink);
-
     return 0;
 }
 
@@ -162,20 +163,24 @@ static void create_ui(StreamData *data) {
 }
 
 static void play_cb(GtkButton *button, StreamData *data) {
+    g_print("Playing");
     gst_element_set_state(data->playbin, GST_STATE_PLAYING);
 }
 
 static void pause_cb(GtkButton *button, StreamData *data) {
+    g_print("Paused");
     gst_element_set_state(data->playbin, GST_STATE_PAUSED);
 }
 
 static void stop_cb(GtkButton *button, StreamData *data) {
+    g_print("Ready");
     gst_element_set_state(data->playbin, GST_STATE_READY);
 }
 
 static void delete_event_cb(GtkWidget *widget, GdkEvent *event, StreamData *data) {
+    g_print("Delete");
     stop_cb(NULL, data);
-    g_application_quit(G_APPLICATION(data->app));
+    gtk_main_quit();
 }
 
 static void slider_cb(GtkRange *range, StreamData *data) {
@@ -213,7 +218,6 @@ static gboolean refresh_ui(StreamData *data) {
 }
 
 static void tags_cb(GstElement *playbin, gint stream, StreamData *data) {
-    g_print("tags_cb: tag %s\n", GST_OBJECT_NAME(data->playbin));
     gst_element_post_message(
         playbin,
         gst_message_new_application(
