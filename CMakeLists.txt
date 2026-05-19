@@ -19,6 +19,7 @@ add_executable(${PROJECT_NAME}_4 main_4.c)
 add_executable(${PROJECT_NAME}_5 main_5.c)
 add_executable(${PROJECT_NAME}_6 main_6.c)
 add_executable(${PROJECT_NAME}_7 main_7.c)
+add_executable(${PROJECT_NAME}_8 main_8.c)
 
 target_link_libraries(${PROJECT_NAME}_2 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP)
 target_link_libraries(${PROJECT_NAME}_3 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP)
@@ -26,3 +27,4 @@ target_link_libraries(${PROJECT_NAME}_4 PRIVATE PkgConfig::GSTREAMER PkgConfig::
 target_link_libraries(${PROJECT_NAME}_5 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP ${GTK3_LIBRARIES})
 target_link_libraries(${PROJECT_NAME}_6 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP)
 target_link_libraries(${PROJECT_NAME}_7 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP)
+target_link_libraries(${PROJECT_NAME}_8 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP)
