@@ -98,6 +98,7 @@ int main(int argc, char *argv[]) {
     g_signal_connect(G_OBJECT(bus), "message::application", G_CALLBACK(application_cb), &data);
 
     // Start playing
+
     ret = gst_element_set_state(data.playbin, GST_STATE_PLAYING);
     if (ret == GST_STATE_CHANGE_FAILURE) {
         g_printerr("Unable to set the playing state.\n");
@@ -113,9 +114,9 @@ int main(int argc, char *argv[]) {
 
     g_timeout_add_seconds(1, G_SOURCE_FUNC(refresh_ui), &data);
     gtk_main();
-
     gst_element_set_state(data.playbin, GST_STATE_NULL);
     gst_object_unref(data.playbin);
+
     return 0;
 }
 
@@ -182,7 +183,6 @@ static void stop_cb(GtkButton *button, StreamData *data) {
 }
 
 static void delete_event_cb(GtkWidget *widget, GdkEvent *event, StreamData *data) {
-    g_print("Delete");
     stop_cb(NULL, data);
     gtk_main_quit();
 }
