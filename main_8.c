@@ -30,6 +30,137 @@ static void error_cb(GstBus *bus, GstMessage *msg, StreamData *data);
 
 int main(int argc, char *argv[]) {
     StreamData data;
+    GstPad *tee_audio_pad, *tee_video_pad, *tee_app_pad;
+    GstPad *queue_audio_pad, *queue_video_pad, *queue_app_pad;
+    GstAudioInfo info;
+    GstCaps *audio_caps;
+    GstBus *bus;
+
+    memset(&data, 0, sizeof(data));
+    data.b = 1;
+    data.d = 1;
+
+    gst_init(&argc, &argv);
+
+    data.app_source = gst_element_factory_make("appsrc", "audio_source");
+    data.tee = gst_element_factory_make("tee", "tee");
+
+    data.audio_queue = gst_element_factory_make("queue", "audio_queue");
+    data.audio_convert_1 = gst_element_factory_make("audioconvert", "audio_convert_1");
+    data.audio_resample = gst_element_factory_make("audioresample", "audio_resample");
+    data.audio_sink = gst_element_factory_make("audioresample", "audio_resample");
+
+    data.video_queue = gst_element_factory_make("queue", "video_queue");
+    data.audio_convert_2 = gst_element_factory_make("audioconvert", "audio_convert_2");
+    data.visual = gst_element_factory_make("wavescope", "visual");
+    data.video_convert = gst_element_factory_make("videoconvert", "video_convert");
+    data.video_sink = gst_element_factory_make("videosink", "video_sink");
+
+    data.app_queue = gst_element_factory_make("queue", "app_queue");
+    data.app_sink = gst_element_factory_make("appsink", "app_sink");
+
+    data.pipeline = gst_element_factory_make("pipeline", "pipeline");
+
+    if (!data.app_source || !data.tee ||
+        !data.audio_queue || !data.audio_convert_1 || !data.audio_resample || !data.audio_sink ||
+        !data.video_queue || !data.audio_convert_2 || !data.visual || !data.video_convert || !data.video_sink ||
+        !data.app_queue || !data.app_sink || !data.pipeline) {
+        g_printerr("Not all elements could be created.\n");
+        return -1;
+    }
+
+    // Configure Wavescope
+    g_object_set(data.visual, "shader", 0, "style", 0, NULL);
+
+    // Configure appsrc
+    gst_audio_info_set_format(&info, GST_AUDIO_FORMAT_S16, SAMPLE_RATE, 1, NULL);
+    audio_caps = gst_audio_info_to_caps(&info);
+    g_object_set(data.app_source, "caps", audio_caps, "format", GST_FORMAT_TIME, NULL);
+    g_signal_connect(data.app_source, "need-data", G_CALLBACK(start_feed), &data);
+    g_signal_connect(data.app_source, "enough-data", G_CALLBACK(stop_feed), &data);
+
+    // Configure appsink
+    g_object_set(data.app_sink, "emit-signals", TRUE, "caps", audio_caps, NULL);
+    g_signal_connect(data.app_sink, "new-sample", G_CALLBACK(new_sample), &data);
+    gst_caps_unref(audio_caps);
+
+    gst_audio_info_set_format(&info, GST_AUDIO_FORMAT_S16, SAMPLE_RATE, 1, NULL);
+
+    gst_bin_add_many(GST_BIN(data.pipeline), data.app_source, data.tee,
+        data.audio_queue, data.audio_convert_1, data.audio_resample, data.audio_sink,
+        data.video_queue, data.audio_convert_2, data.visual, data.video_convert, data.video_sink,
+        data.app_queue, data.app_sink, NULL);
+
+    if (gst_element_link_many(data.app_source, data.tee, NULL) != TRUE) {
+        g_printerr("Not all app source elements could be created.\n");
+        gst_object_unref(data.pipeline);
+        return -1;
+    }
+    if (gst_element_link_many(data.audio_queue, data.audio_convert_1, data.audio_resample, data.audio_sink, NULL) != TRUE) {
+        g_printerr("Not all audio sink elements could be created.\n");
+        gst_object_unref(data.pipeline);
+        return -1;
+    }
+    if (gst_element_link_many(data.video_queue, data.audio_convert_2, data.video_convert, data.video_sink, NULL) != TRUE) {
+        g_printerr("Not all video sink elements could be created.\n");
+        gst_object_unref(data.pipeline);
+        return -1;
+    }
+    if (gst_element_link_many(data.app_queue, data.app_sink, NULL) != TRUE) {
+        g_printerr("Not all app sink elements could be created.\n");
+        gst_object_unref(data.pipeline);
+        return -1;
+    }
+
+    tee_audio_pad = gst_element_request_pad_simple(data.tee, "src_%u");
+    tee_video_pad = gst_element_request_pad_simple(data.tee, "src_%u");
+    tee_app_pad = gst_element_request_pad_simple(data.tee, "src_%u");
+
+    queue_audio_pad = gst_element_get_static_pad(data.audio_queue, "sink");
+    queue_video_pad = gst_element_get_static_pad(data.video_queue, "sink");
+    queue_app_pad = gst_element_get_static_pad(data.app_queue, "sink");
+
+    if (gst_pad_link(tee_audio_pad, queue_audio_pad) != GST_PAD_LINK_OK) {
+        g_printerr("Audio pipeline could not be linked to tee.\n");
+        gst_object_unref(data.pipeline);
+        return -1;
+    }
+    if (gst_pad_link(tee_video_pad, queue_video_pad) != GST_PAD_LINK_OK) {
+        g_printerr("Video pipeline could not be linked to tee.\n");
+        gst_object_unref(data.pipeline);
+        return -1;
+    }
+    if (gst_pad_link(tee_app_pad, queue_app_pad) != GST_PAD_LINK_OK) {
+        g_printerr("App pipeline could not be linked to tee.\n");
+        gst_object_unref(data.pipeline);
+        return -1;
+    }
+
+    gst_object_unref(queue_audio_pad);
+    gst_object_unref(queue_video_pad);
+    gst_object_unref(queue_app_pad);
+
+    bus = gst_element_get_bus(data.pipeline);
+    gst_bus_add_signal_watch(bus);
+    g_signal_connect(G_OBJECT(bus), "message::error", G_CALLBACK(error_cb), &data);
+    gst_object_unref(bus);
+
+    // Start playing the pipeline
+    gst_element_set_state(data.pipeline, GST_STATE_PLAYING);
+
+    // Create a GLib Main Loop and set it to run
+    data.main_loop = g_main_loop_new(NULL, FALSE);
+    g_main_loop_run(data.main_loop);
+
+    gst_element_release_request_pad(data.tee, tee_audio_pad);
+    gst_element_release_request_pad(data.tee, tee_video_pad);
+    gst_element_release_request_pad(data.tee, tee_app_pad);
+    gst_object_unref(tee_audio_pad);
+    gst_object_unref(tee_video_pad);
+    gst_object_unref(tee_app_pad);
+
+    gst_element_set_state(data.pipeline, GST_STATE_NULL);
+    gst_object_unref(data.pipeline);
     return 0;
 }
 
