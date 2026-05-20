@@ -18,15 +18,15 @@ typedef struct {
     GMainLoop *main_loop;
 } StreamData;
 
-static gboolean push_data(StreamData *data);
-
 static void start_feed(GstElement *source, guint size, StreamData *data);
 
 static void stop_feed(GstElement *source, StreamData *data);
 
+static gboolean push_data(StreamData *data);
+
 static GstFlowReturn new_sample(GstElement *sink, StreamData *data);
 
-static void error_cb(GstBus *bus, GstMessage *msg, StreamData *data);
+static void error_cb(GstBus *bus, GstMessage *msg, const StreamData *data);
 
 int main(int argc, char *argv[]) {
     StreamData data;
@@ -164,18 +164,79 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-static gboolean push_data(StreamData *data) {
-    return TRUE;
-}
-
 static void start_feed(GstElement *source, guint size, StreamData *data) {
+    if (data->source_id == 0) {
+        g_print("Start feeding\n");
+        data->source_id = g_idle_add(G_SOURCE_FUNC(push_data), data);
+    }
 }
 
 static void stop_feed(GstElement *source, StreamData *data) {
+    if (data->source_id != 0) {
+        g_print("Stop feeding\n");
+        g_source_remove(data->source_id);
+        data->source_id = 0;
+    }
+}
+
+static gboolean push_data(StreamData *data) {
+    GstBuffer *buffer;
+    GstFlowReturn ret;
+    int i;
+    GstMapInfo map;
+    gint16 *raw;
+    gint num_samples = CHUNK_SIZE >> 1;
+    gfloat freq;
+
+    buffer = gst_buffer_new_and_alloc(CHUNK_SIZE);
+    GST_BUFFER_TIMESTAMP(buffer) = gst_util_uint64_scale(data->num_samples, GST_SECOND, SAMPLE_RATE);
+    GST_BUFFER_DURATION(buffer) = gst_util_uint64_scale(num_samples, GST_SECOND, SAMPLE_RATE);
+
+    // Generate some psychedelic waveforms
+    gst_buffer_map(buffer, &map, GST_MAP_WRITE);
+    raw = (gint16 *)map.data; // Ok, this is wierd
+    data->c += data->d;
+    data->d -= data->c / 1000;
+    freq = 1100 + 1000 * data->d;
+    for (i = 0; i < num_samples; i++) {
+        data->a += data->b;
+        data->b -= data->a / freq;
+        raw[i] = (gint16)(500 * data->a);
+    }
+    gst_buffer_unmap(buffer, &map);
+    data->num_samples += num_samples;
+
+    g_signal_emit_by_name(data->app_source, "puffer-buffer", buffer, &ret);
+    gst_buffer_unref(buffer);
+    if (ret != GST_FLOW_OK) {
+        return FALSE;
+    }
+
+    return TRUE;
 }
 
 static GstFlowReturn new_sample(GstElement *sink, StreamData *data) {
+    GstSample *sample;
+
+    g_signal_emit_by_name(sink, "pull-sample", &sample);
+    if (sample) {
+        g_print("*");
+        gst_sample_unref(sample);
+        return GST_FLOW_OK;
+    }
+
+    return GST_FLOW_FLUSHING;
 }
 
-static void error_cb(GstBus *bus, GstMessage *msg, StreamData *data) {
+static void error_cb(GstBus *bus, GstMessage *msg, const StreamData *data) {
+    GError *error;
+    gchar *info;
+
+    gst_message_parse_error(msg, &error, &info);
+    g_printerr("Error received from element %s: %s\n", GST_OBJECT_NAME(msg->src), error->message);
+    g_printerr("Debug information: %s\n", info ? info : "none");
+    g_clear_error(&error);
+    g_free(info);
+
+    g_main_loop_quit(data->main_loop);
 }
