@@ -48,24 +48,37 @@ int main(int argc, char *argv[]) {
     data.audio_queue = gst_element_factory_make("queue", "audio_queue");
     data.audio_convert_1 = gst_element_factory_make("audioconvert", "audio_convert_1");
     data.audio_resample = gst_element_factory_make("audioresample", "audio_resample");
-    data.audio_sink = gst_element_factory_make("audioresample", "audio_resample");
+    data.audio_sink = gst_element_factory_make("autoaudiosink", "audio_sink");
 
     data.video_queue = gst_element_factory_make("queue", "video_queue");
     data.audio_convert_2 = gst_element_factory_make("audioconvert", "audio_convert_2");
     data.visual = gst_element_factory_make("wavescope", "visual");
     data.video_convert = gst_element_factory_make("videoconvert", "video_convert");
-    data.video_sink = gst_element_factory_make("videosink", "video_sink");
+    data.video_sink = gst_element_factory_make("autovideosink", "video_sink");
 
     data.app_queue = gst_element_factory_make("queue", "app_queue");
     data.app_sink = gst_element_factory_make("appsink", "app_sink");
 
     data.pipeline = gst_element_factory_make("pipeline", "pipeline");
 
-    if (!data.app_source || !data.tee ||
-        !data.audio_queue || !data.audio_convert_1 || !data.audio_resample || !data.audio_sink ||
-        !data.video_queue || !data.audio_convert_2 || !data.visual || !data.video_convert || !data.video_sink ||
-        !data.app_queue || !data.app_sink || !data.pipeline) {
-        g_printerr("Not all elements could be created.\n");
+    if (!data.app_source || !data.tee) {
+        g_printerr("Not all source elements could be created.\n");
+        return -1;
+    }
+    if (!data.audio_queue || !data.audio_convert_1 || !data.audio_resample || !data.audio_sink) {
+        g_printerr("Not all audio elements could be created.\n");
+        return -1;
+    }
+    if (!data.video_queue || !data.audio_convert_2 || !data.visual || !data.video_convert || !data.video_sink) {
+        g_printerr("Not all video elements could be created.\n");
+        return -1;
+    }
+    if (!data.app_queue || !data.app_sink || !data.pipeline) {
+        g_printerr("Not all app elements could be created.\n");
+        return -1;
+    }
+    if (!data.pipeline) {
+        g_printerr("Pipeline elements could be created.\n");
         return -1;
     }
 
@@ -87,27 +100,38 @@ int main(int argc, char *argv[]) {
     gst_audio_info_set_format(&info, GST_AUDIO_FORMAT_S16, SAMPLE_RATE, 1, NULL);
 
     gst_bin_add_many(GST_BIN(data.pipeline), data.app_source, data.tee,
-        data.audio_queue, data.audio_convert_1, data.audio_resample, data.audio_sink,
-        data.video_queue, data.audio_convert_2, data.visual, data.video_convert, data.video_sink,
-        data.app_queue, data.app_sink, NULL);
+                     data.audio_queue, data.audio_convert_1, data.audio_resample, data.audio_sink,
+                     data.video_queue, data.audio_convert_2, data.visual, data.video_convert, data.video_sink,
+                     data.app_queue, data.app_sink, NULL);
 
     if (gst_element_link_many(data.app_source, data.tee, NULL) != TRUE) {
-        g_printerr("Not all app source elements could be created.\n");
+        g_printerr("Not all app source elements could be linked.\n");
         gst_object_unref(data.pipeline);
         return -1;
     }
-    if (gst_element_link_many(data.audio_queue, data.audio_convert_1, data.audio_resample, data.audio_sink, NULL) != TRUE) {
-        g_printerr("Not all audio sink elements could be created.\n");
+    if (gst_element_link_many(
+            data.audio_queue,
+            data.audio_convert_1,
+            data.audio_resample,
+            data.audio_sink,
+            NULL) != TRUE) {
+        g_printerr("Not all audio sink elements could be linked.\n");
         gst_object_unref(data.pipeline);
         return -1;
     }
-    if (gst_element_link_many(data.video_queue, data.audio_convert_2, data.video_convert, data.video_sink, NULL) != TRUE) {
-        g_printerr("Not all video sink elements could be created.\n");
+    if (gst_element_link_many(
+            data.video_queue,
+            data.audio_convert_2,
+            data.visual,
+            data.video_convert,
+            data.video_sink,
+            NULL) != TRUE) {
+        g_printerr("Not all video sink elements could be linked.\n");
         gst_object_unref(data.pipeline);
         return -1;
     }
     if (gst_element_link_many(data.app_queue, data.app_sink, NULL) != TRUE) {
-        g_printerr("Not all app sink elements could be created.\n");
+        g_printerr("Not all app sink elements could be linked.\n");
         gst_object_unref(data.pipeline);
         return -1;
     }
@@ -194,14 +218,14 @@ static gboolean push_data(StreamData *data) {
 
     // Generate some psychedelic waveforms
     gst_buffer_map(buffer, &map, GST_MAP_WRITE);
-    raw = (gint16 *)map.data; // Ok, this is wierd
+    raw = (gint16 *) map.data; // Ok, this is wierd
     data->c += data->d;
     data->d -= data->c / 1000;
     freq = 1100 + 1000 * data->d;
     for (i = 0; i < num_samples; i++) {
         data->a += data->b;
         data->b -= data->a / freq;
-        raw[i] = (gint16)(500 * data->a);
+        raw[i] = (gint16) (500 * data->a);
     }
     gst_buffer_unmap(buffer, &map);
     data->num_samples += num_samples;
