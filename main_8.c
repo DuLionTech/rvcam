@@ -230,7 +230,7 @@ static gboolean push_data(StreamData *data) {
     gst_buffer_unmap(buffer, &map);
     data->num_samples += num_samples;
 
-    g_signal_emit_by_name(data->app_source, "puffer-buffer", buffer, &ret);
+    g_signal_emit_by_name(data->app_source, "push-buffer", buffer, &ret);
     gst_buffer_unref(buffer);
     if (ret != GST_FLOW_OK) {
         return FALSE;

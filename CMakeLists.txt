@@ -30,4 +30,4 @@ target_link_libraries(${PROJECT_NAME}_4 PRIVATE PkgConfig::GSTREAMER PkgConfig::
 target_link_libraries(${PROJECT_NAME}_5 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP ${GTK3_LIBRARIES})
 target_link_libraries(${PROJECT_NAME}_6 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP)
 target_link_libraries(${PROJECT_NAME}_7 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP)
-target_link_libraries(${PROJECT_NAME}_8 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP ${GST_AUDIO_LIBRARIES})
+target_link_libraries(${PROJECT_NAME}_8 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP ${GTK3_LIBRARIES} ${GST_AUDIO_LIBRARIES})
