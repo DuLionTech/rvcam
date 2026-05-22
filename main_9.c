@@ -21,7 +21,7 @@ static void print_tag_foreach(const GstTagList *tags, const gchar *tag, gpointer
 int main(int argc, char *argv[]) {
     StreamData data;
     GError *error = NULL;
-    gchar *uri = SOURCE_URI;
+    gchar *uri = "rtsp://admin:Nitrox36@192.168.16.136:554/cam/realmonitor?channel=1&subtype=0&unicast=true&proto=Onvif";
 
     if (argc > 1) {
         uri = argv[1];
@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
     gst_init(&argc, &argv);
 
     g_print("Discovering '%s'\n", uri);
-    data.discoverer = gst_discoverer_new(5 * GST_SECOND, &error);
+    data.discoverer = gst_discoverer_new(60 * GST_SECOND, &error);
     if (!data.discoverer) {
         g_print("Error creating discoverer: %s\n", error->message);
         g_clear_error(&error);

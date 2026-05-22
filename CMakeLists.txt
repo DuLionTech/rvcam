@@ -9,6 +9,7 @@ pkg_check_modules(GST_APP REQUIRED IMPORTED_TARGET gstreamer-app-1.0)
 pkg_check_modules(GTK3 REQUIRED IMPORTED_TARGET gtk+-3.0)
 pkg_check_modules(GST_AUDIO REQUIRED gstreamer-audio-1.0)
 pkg_check_modules(GST_PBUTILS REQUIRED gstreamer-pbutils-1.0)
+pkg_check_modules(GST_RTSP REQUIRED gstreamer-rtsp-1.0)
 
 include_directories(include)
 include_directories(${GTK3_INCLUDE_DIRS})
@@ -33,4 +34,4 @@ target_link_libraries(${PROJECT_NAME}_5 PRIVATE PkgConfig::GSTREAMER PkgConfig::
 target_link_libraries(${PROJECT_NAME}_6 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP)
 target_link_libraries(${PROJECT_NAME}_7 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP)
 target_link_libraries(${PROJECT_NAME}_8 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP ${GST_AUDIO_LIBRARIES})
-target_link_libraries(${PROJECT_NAME}_9 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP ${GST_PBUTILS_LIBRARIES})
+target_link_libraries(${PROJECT_NAME}_9 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP ${GST_PBUTILS_LIBRARIES} ${GST_RTSP_LIBRARIES})
