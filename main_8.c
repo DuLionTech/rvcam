@@ -24,7 +24,7 @@ static void stop_feed(GstElement *source, StreamData *data);
 
 static gboolean push_data(StreamData *data);
 
-static GstFlowReturn new_sample(GstElement *sink, StreamData *data);
+static GstFlowReturn pull_sample(GstElement *sink, StreamData *data);
 
 static void error_cb(GstBus *bus, GstMessage *msg, const StreamData *data);
 
@@ -85,16 +85,16 @@ int main(int argc, char *argv[]) {
     // Configure Wavescope
     g_object_set(data.visual, "shader", 0, "style", 0, NULL);
 
-    // Configure appsrc
+    // Configure appsrc (push_data)
     gst_audio_info_set_format(&info, GST_AUDIO_FORMAT_S16, SAMPLE_RATE, 1, NULL);
     audio_caps = gst_audio_info_to_caps(&info);
     g_object_set(data.app_source, "caps", audio_caps, "format", GST_FORMAT_TIME, NULL);
     g_signal_connect(data.app_source, "need-data", G_CALLBACK(start_feed), &data);
     g_signal_connect(data.app_source, "enough-data", G_CALLBACK(stop_feed), &data);
 
-    // Configure appsink
+    // Configure appsink (pull_sample)
     g_object_set(data.app_sink, "emit-signals", TRUE, "caps", audio_caps, NULL);
-    g_signal_connect(data.app_sink, "new-sample", G_CALLBACK(new_sample), &data);
+    g_signal_connect(data.app_sink, "new-sample", G_CALLBACK(pull_sample), &data);
     gst_caps_unref(audio_caps);
 
     gst_audio_info_set_format(&info, GST_AUDIO_FORMAT_S16, SAMPLE_RATE, 1, NULL);
@@ -239,7 +239,7 @@ static gboolean push_data(StreamData *data) {
     return TRUE;
 }
 
-static GstFlowReturn new_sample(GstElement *sink, StreamData *data) {
+static GstFlowReturn pull_sample(GstElement *sink, StreamData *data) {
     GstSample *sample;
 
     g_signal_emit_by_name(sink, "pull-sample", &sample);
