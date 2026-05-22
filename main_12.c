@@ -28,7 +28,8 @@ int main(int argc, char *argv[]) {
         g_printerr("Unable to set the pipeline to the playing state.\n");
         gst_object_unref(pipeline);
         return -1;
-    } else if (ret == GST_STATE_CHANGE_NO_PREROLL) {
+    }
+    if (ret == GST_STATE_CHANGE_NO_PREROLL) {
         data.is_live = TRUE;
     }
 
@@ -70,7 +71,7 @@ static void cb_message(GstBus *bus, GstMessage *msg, StreamData *data) {
             gint percent = 0;
             if (data->is_live) break;
             gst_message_parse_buffering(msg, &percent);
-            g_print("Buffering percent: %i\n", percent);
+            g_print("Buffering percent: %3d%\n", percent);
             if (percent < 100) {
                 gst_element_set_state(data->pipeline, GST_STATE_PAUSED);
             } else {
