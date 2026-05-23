@@ -4,7 +4,7 @@
 
 typedef struct {
     GstElement *source;
-    GstElement *depay;
+    GstElement *extract;
     GstElement *parse;
     GstElement *decode;
     GstElement *convert;
@@ -27,14 +27,14 @@ int main(int argc, char *argv[]) {
     gst_init(&argc, &argv);
     data.pipeline = gst_pipeline_new("rtsp-client");
     data.source = gst_element_factory_make("rtspsrc", "source");
-    data.depay = gst_element_factory_make("rtph265depay", "extract");
+    data.extract = gst_element_factory_make("rtph265depay", "extract");
     data.parse = gst_element_factory_make("h265parse", "parse");
     data.decode = gst_element_factory_make("avdec_h265", "decode");
     data.convert = gst_element_factory_make("videoconvert", "convert");
     data.sink = gst_element_factory_make("autovideosink", "sink");
     if (!data.pipeline ||
         !data.source ||
-        !data.depay ||
+        !data.extract ||
         !data.parse ||
         !data.decode ||
         !data.convert ||
@@ -45,13 +45,13 @@ int main(int argc, char *argv[]) {
     gst_bin_add_many(
         GST_BIN(data.pipeline),
         data.source,
-        data.depay,
+        data.extract,
         data.parse,
         data.decode,
         data.convert,
         data.sink,
         NULL);
-    if (!gst_element_link(data.depay, data.parse)) {
+    if (!gst_element_link(data.extract, data.parse)) {
         g_printerr("Could not link depay to parse");
         return -1;
     }
@@ -128,7 +128,7 @@ static void pad_added(GstElement *src, GstPad *src_pad, const StreamData *data) 
             gst_caps_get_size(src_caps),
             caps);
 
-    sink = data->depay;
+    sink = data->extract;
     GstPad *sink_pad = gst_element_get_static_pad(sink, "sink");
     if (gst_pad_is_linked(sink_pad)) {
         goto exit;
