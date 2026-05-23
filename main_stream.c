@@ -4,9 +4,10 @@
 
 typedef struct {
     GstElement *source;
-    GstElement *extract;
+    GstElement *depay;
     GstElement *parse;
     GstElement *decode;
+    GstElement *convert;
     GstElement *sink;
     GstElement *pipeline;
     GMainLoop *loop;
@@ -26,28 +27,46 @@ int main(int argc, char *argv[]) {
     gst_init(&argc, &argv);
     data.pipeline = gst_pipeline_new("rtsp-client");
     data.source = gst_element_factory_make("rtspsrc", "source");
-    data.extract = gst_element_factory_make("rtph265depay", "extract");
+    data.depay = gst_element_factory_make("rtph265depay", "extract");
     data.parse = gst_element_factory_make("h265parse", "parse");
-    data.decode = gst_element_factory_make("decodebin", "decode");
+    data.decode = gst_element_factory_make("avdec_h265", "decode");
+    data.convert = gst_element_factory_make("videoconvert", "convert");
     data.sink = gst_element_factory_make("autovideosink", "sink");
-    if (!data.pipeline || !data.source || !data.extract || !data.parse || !data.decode || !data.sink) {
+    if (!data.pipeline ||
+        !data.source ||
+        !data.depay ||
+        !data.parse ||
+        !data.decode ||
+        !data.convert ||
+        !data.sink) {
         g_printerr("Not all element could be created.\n");
         return -1;
     }
     gst_bin_add_many(
         GST_BIN(data.pipeline),
         data.source,
-        data.extract,
+        data.depay,
         data.parse,
         data.decode,
+        data.convert,
         data.sink,
         NULL);
-    gst_element_link_many(
-        data.extract,
-        data.parse,
-        data.decode,
-        data.sink,
-        NULL);
+    if (!gst_element_link(data.depay, data.parse)) {
+        g_printerr("Could not link depay to parse");
+        return -1;
+    }
+    if (!gst_element_link(data.parse, data.decode)) {
+        g_printerr("Could not link parse to decode");
+        return -1;
+    }
+    if (!gst_element_link(data.decode, data.convert)) {
+        g_printerr("Could not link decode to convert");
+        return -1;
+    }
+    if (!gst_element_link(data.convert, data.sink)) {
+        g_printerr("Could not link convert to sink");
+        return -1;
+    }
 
     bus = gst_element_get_bus(data.pipeline);
     gst_bus_add_signal_watch(bus);
@@ -109,7 +128,7 @@ static void pad_added(GstElement *src, GstPad *src_pad, const StreamData *data) 
             gst_caps_get_size(src_caps),
             caps);
 
-    sink = data->extract;
+    sink = data->depay;
     GstPad *sink_pad = gst_element_get_static_pad(sink, "sink");
     if (gst_pad_is_linked(sink_pad)) {
         goto exit;
