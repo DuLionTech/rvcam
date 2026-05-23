@@ -103,7 +103,7 @@ static void pad_added_handler(GstElement *src, GstPad *pad, const StreamData *sd
     const gchar *pad_type = NULL;
 
     pad_name = GST_PAD_NAME(pad);
-    g_print("Received new pad '%s' from '%s':\n", pad_name, GST_ELEMENT_NAME(src));
+    g_print("Received new pad '%s'G from '%s':\n", pad_name, GST_ELEMENT_NAME(src));
     if (gst_pad_is_linked(sink_pad)) {
         g_print("Convert sink pad already linked.\n");
         goto exit_a;

@@ -27,6 +27,7 @@ add_executable(${PROJECT_NAME}_7 main_7.c)
 add_executable(${PROJECT_NAME}_8 main_8.c)
 add_executable(${PROJECT_NAME}_9 main_9.c)
 add_executable(${PROJECT_NAME}_10 main_12.c)
+add_executable(${PROJECT_NAME}_stream main_stream.c)
 
 target_link_libraries(${PROJECT_NAME}_2 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP)
 target_link_libraries(${PROJECT_NAME}_3 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP)
@@ -37,3 +38,4 @@ target_link_libraries(${PROJECT_NAME}_7 PRIVATE PkgConfig::GSTREAMER PkgConfig::
 target_link_libraries(${PROJECT_NAME}_8 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP ${GST_AUDIO_LIBRARIES})
 target_link_libraries(${PROJECT_NAME}_9 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP ${GST_PBUTILS_LIBRARIES} ${GST_RTSP_LIBRARIES})
 target_link_libraries(${PROJECT_NAME}_10 PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP)
+target_link_libraries(${PROJECT_NAME}_stream PRIVATE PkgConfig::GSTREAMER PkgConfig::GST_APP)
