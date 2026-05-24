@@ -8,14 +8,22 @@ typedef struct {
     GstElement *parse;
     GstElement *decode;
     GstElement *convert;
+} RtspData;
+
+typedef struct {
+    GstElement compose;
+    RtspData left;
+    RtspData right;
     GstElement *sink;
     GstElement *pipeline;
     GMainLoop *loop;
 } StreamData;
 
-static gboolean select_stream(GstElement *src, guint num, const GstCaps *caps, StreamData *data);
+static gboolean select_stream(GstElement *src, guint num, const GstCaps *caps, RtspData *data);
 
-static void pad_added(GstElement *src, GstPad *src_pad, const StreamData *data);
+static void pad_added(GstElement *src, GstPad *src_pad, const RtspData *data);
+
+static void build_rtsp(RtspData *data, GstElement *pipeline, GstElement *sink, const gchar *suffix);
 
 static void error_cb(GstBus *bus, GstMessage *msg, const StreamData *data);
 
@@ -26,57 +34,20 @@ int main(int argc, char *argv[]) {
 
     gst_init(&argc, &argv);
     data.pipeline = gst_pipeline_new("rtsp-client");
-    data.source = gst_element_factory_make("rtspsrc", "source");
-    data.extract = gst_element_factory_make("rtph265depay", "extract");
-    data.parse = gst_element_factory_make("h265parse", "parse");
-    data.decode = gst_element_factory_make("avdec_h265", "decode");
-    data.convert = gst_element_factory_make("videoconvert", "convert");
     data.sink = gst_element_factory_make("autovideosink", "sink");
-    if (!data.pipeline ||
-        !data.source ||
-        !data.extract ||
-        !data.parse ||
-        !data.decode ||
-        !data.convert ||
-        !data.sink) {
+    if (!data.pipeline || !data.sink) {
         g_printerr("Not all element could be created.\n");
         return -1;
     }
-    gst_bin_add_many(
-        GST_BIN(data.pipeline),
-        data.source,
-        data.extract,
-        data.parse,
-        data.decode,
-        data.convert,
-        data.sink,
-        NULL);
-    if (!gst_element_link(data.extract, data.parse)) {
-        g_printerr("Could not link depay to parse");
-        return -1;
-    }
-    if (!gst_element_link(data.parse, data.decode)) {
-        g_printerr("Could not link parse to decode");
-        return -1;
-    }
-    if (!gst_element_link(data.decode, data.convert)) {
-        g_printerr("Could not link decode to convert");
-        return -1;
-    }
-    if (!gst_element_link(data.convert, data.sink)) {
-        g_printerr("Could not link convert to sink");
-        return -1;
-    }
+    gst_bin_add_many(GST_BIN(data.pipeline), data.sink, NULL);
+
+    build_rtsp(&data.left, data.pipeline, data.sink, "_lft");
+    build_rtsp(&data.right, data.pipeline, data.sink, "_rgt");
 
     bus = gst_element_get_bus(data.pipeline);
     gst_bus_add_signal_watch(bus);
     g_signal_connect(G_OBJECT(bus), "message::error", G_CALLBACK(error_cb), NULL);
     gst_object_unref(bus);
-
-    g_object_set(data.source, "location", RTSP_LOCATION, NULL);
-    g_object_set(data.source, "latency", 0, NULL);
-    g_signal_connect(data.source, "pad-added", G_CALLBACK(pad_added), &data);
-    g_signal_connect(data.source, "select-stream", G_CALLBACK(select_stream), &data);
 
     ret = gst_element_set_state(data.pipeline, GST_STATE_PLAYING);
     if (ret == GST_STATE_CHANGE_FAILURE) {
@@ -93,7 +64,36 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-static gboolean select_stream(GstElement *src, guint num, const GstCaps *caps, StreamData *data) {
+static void build_rtsp(RtspData *data, GstElement *pipeline, GstElement *sink, const gchar *suffix) {
+    data->source = gst_element_factory_make("rtspsrc", "source");
+    data->extract = gst_element_factory_make("rtph265depay", "extract");
+    data->parse = gst_element_factory_make("h265parse", "parse");
+    data->decode = gst_element_factory_make("avdec_h265", "decode");
+    data->convert = gst_element_factory_make("videoconvert", "convert");
+    if (!data->source || !data->extract || !data->parse || !data->decode || !data->convert ) {
+        g_printerr("Not all rtsp element could be created.\n");
+    }
+    gst_bin_add_many(GST_BIN(pipeline), data->source, data->extract, data->parse, data->decode, data->convert, NULL);
+    if (!gst_element_link(data->extract, data->parse)) {
+        g_printerr("Could not link depay to parse");
+    }
+    if (!gst_element_link(data->parse, data->decode)) {
+        g_printerr("Could not link parse to decode");
+    }
+    if (!gst_element_link(data->decode, data->convert)) {
+        g_printerr("Could not link decode to convert");
+    }
+    if (!gst_element_link(data->convert, sink)) {
+        g_printerr("Could not link convert to sink");
+    }
+
+    g_object_set(data->source, "location", RTSP_LOCATION, NULL);
+    g_object_set(data->source, "latency", 0, NULL);
+    g_signal_connect(data->source, "pad-added", G_CALLBACK(pad_added), &data);
+    g_signal_connect(data->source, "select-stream", G_CALLBACK(select_stream), &data);
+}
+
+static gboolean select_stream(GstElement *src, guint num, const GstCaps *caps, RtspData *data) {
     const gchar *media, *encoding;
 
     GstStructure *structure = gst_caps_get_structure(caps, 0);
@@ -105,7 +105,7 @@ static gboolean select_stream(GstElement *src, guint num, const GstCaps *caps, S
     return FALSE;
 }
 
-static void pad_added(GstElement *src, GstPad *src_pad, const StreamData *data) {
+static void pad_added(GstElement *src, GstPad *src_pad, const RtspData *data) {
     const gchar *src_name = NULL;
     const gchar *src_type = NULL;
     const gchar *caps = NULL;
