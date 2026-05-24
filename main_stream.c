@@ -13,7 +13,7 @@ typedef struct {
     GMainLoop *loop;
 } StreamData;
 
-static gboolean select_stream(GstElement *src, guint num, GstCaps *caps, StreamData *data);
+static gboolean select_stream(GstElement *src, guint num, const GstCaps *caps, StreamData *data);
 
 static void pad_added(GstElement *src, GstPad *src_pad, const StreamData *data);
 
@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
     gst_object_unref(bus);
 
     g_object_set(data.source, "location", RTSP_LOCATION, NULL);
-    g_object_set(data.source, "latency", 100, NULL);
+    g_object_set(data.source, "latency", 0, NULL);
     g_signal_connect(data.source, "pad-added", G_CALLBACK(pad_added), &data);
     g_signal_connect(data.source, "select-stream", G_CALLBACK(select_stream), &data);
 
@@ -93,7 +93,7 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-static gboolean select_stream(GstElement *src, guint num, GstCaps *caps, StreamData *data) {
+static gboolean select_stream(GstElement *src, guint num, const GstCaps *caps, StreamData *data) {
     const gchar *media, *encoding;
 
     GstStructure *structure = gst_caps_get_structure(caps, 0);
@@ -116,7 +116,7 @@ static void pad_added(GstElement *src, GstPad *src_pad, const StreamData *data) 
     GstPadLinkReturn ret;
 
     src_name = GST_PAD_NAME(src_pad);
-    g_print("Source pad '%s' added:\n", src_name, GST_ELEMENT_NAME(src));
+    g_print("Source pad '%s' added\n", src_name);
 
     src_caps = gst_pad_get_current_caps(src_pad);
     caps_struct = gst_caps_get_structure(src_caps, 0);
