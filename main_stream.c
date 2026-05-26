@@ -1,6 +1,7 @@
 #include <gst/gst.h>
 
-#define RTSP_LOCATION "rtsp://192.168.16.128:554/stream1"
+#define RTSP_RIGHT "rtsp://192.168.16.128:554/stream1"
+#define RTSP_LEFT "rtsp://192.168.16.160:554/stream1"
 
 typedef struct {
     GstElement *source;
@@ -8,12 +9,13 @@ typedef struct {
     GstElement *parse;
     GstElement *decode;
     GstElement *convert;
+    GstElement *flip;
 } RtspData;
 
 typedef struct {
-    GstElement compose;
     RtspData left;
     RtspData right;
+    GstElement *compose;
     GstElement *sink;
     GstElement *pipeline;
     GMainLoop *loop;
@@ -27,37 +29,48 @@ static GstElement* build_element(const gchar *factory_name, const gchar *prefix,
 
 static gboolean build_link(GstElement *source, GstElement *sink);
 
-static void build_channel(RtspData *data, GstElement *pipeline, GstElement *sink, const gchar *prefix);
+static void build_channel(RtspData *data, GstElement *pipeline, GstElement *sink, const gchar *location, const gchar *prefix);
 
 static void error_cb(GstBus *bus, GstMessage *msg, const StreamData *data);
 
 int main(int argc, char *argv[]) {
     StreamData data = {0};
     GstBus *bus;
-    GstStateChangeReturn ret;
+    GstPad *sink_pad;
 
     gst_init(&argc, &argv);
     data.pipeline = gst_pipeline_new("rtsp-client");
+    data.compose = gst_element_factory_make("compositor", "compositor");
     data.sink = gst_element_factory_make("autovideosink", "sink");
     if (!data.pipeline || !data.sink) {
         g_printerr("Not all element could be created.\n");
         return -1;
     }
-    gst_bin_add_many(GST_BIN(data.pipeline), data.sink, NULL);
+    gst_bin_add_many(GST_BIN(data.pipeline), data.compose, data.sink, NULL);
+    if (!gst_element_link(data.compose, data.sink)) {
+        g_printerr("Could not link %s to %s", GST_ELEMENT_NAME(data.compose), GST_ELEMENT_NAME(data.sink));
+        goto fail;
+    }
 
-    // build_channel(&data.left, data.pipeline, data.sink, "left_");
-    build_channel(&data.right, data.pipeline, data.sink, "right_");
+    sink_pad = gst_element_request_pad_simple(data.compose, "sink_%u");
+    g_object_set(G_OBJECT(sink_pad), "xpos", 0, "ypos", 0, "width", 1920, "height", 1080, NULL);
+    gst_object_unref(sink_pad);
+
+    sink_pad = gst_element_request_pad_simple(data.compose, "sink_%u");
+    g_object_set(G_OBJECT(sink_pad), "xpos", 1920, "ypos", 0, "width", 1920, "height", 1080, NULL);
+    gst_object_unref(sink_pad);
+
+    build_channel(&data.left, data.pipeline, data.compose, RTSP_LEFT, "left_");
+    build_channel(&data.right, data.pipeline, data.compose, RTSP_RIGHT, "right_");
 
     bus = gst_element_get_bus(data.pipeline);
     gst_bus_add_signal_watch(bus);
     g_signal_connect(G_OBJECT(bus), "message::error", G_CALLBACK(error_cb), NULL);
     gst_object_unref(bus);
 
-    ret = gst_element_set_state(data.pipeline, GST_STATE_PLAYING);
-    if (ret == GST_STATE_CHANGE_FAILURE) {
+    if (gst_element_set_state(data.pipeline, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
         g_printerr("Unable to set the pipeline to the playing state.\n");
-        gst_object_unref(data.pipeline);
-        return -1;
+        goto fail;
     }
 
     data.loop = g_main_loop_new(NULL, FALSE);
@@ -66,29 +79,45 @@ int main(int argc, char *argv[]) {
     gst_element_set_state(data.pipeline, GST_STATE_NULL);
     gst_object_unref(data.pipeline);
     return 0;
+
+fail:
+    gst_object_unref(data.pipeline);
+    return -1;
 }
 
-static void build_channel(RtspData *data, GstElement *pipeline, GstElement *sink, const gchar *prefix) {
+static void build_channel(RtspData *data, GstElement *pipeline, GstElement *sink, const gchar *location, const gchar *prefix) {
     data->source = build_element("rtspsrc", prefix, "source");
     data->extract = build_element("rtph265depay", prefix, "extract");
     data->parse = build_element("h265parse", prefix, "parse");
     data->decode = build_element("avdec_h265", prefix, "decode");
     data->convert = build_element("videoconvert", prefix, "convert");
-    if (!data->source || !data->extract || !data->parse || !data->decode || !data->convert ) {
+    data->flip = build_element("videoflip", prefix, "flip");
+    if (!data->source || !data->extract || !data->parse || !data->decode || !data->convert  || !data->flip ) {
         g_printerr("Not all rtsp element could be created.\n");
     }
 
-    gst_bin_add_many(GST_BIN(pipeline), data->source, data->extract, data->parse, data->decode, data->convert, NULL);
+    g_object_set(data->flip, "method", 4, NULL);
+
+    gst_bin_add_many(
+        GST_BIN(pipeline),
+        data->source,
+        data->extract,
+        data->parse,
+        data->decode,
+        data->convert,
+        data->flip,
+        NULL);
 
     if (!build_link(data->extract, data->parse) ||
         !build_link(data->parse, data->decode) ||
         !build_link(data->decode, data->convert) ||
-        !build_link(data->convert, sink)) {
+        !build_link(data->convert, data->flip) ||
+        !build_link(data->flip, sink)) {
         g_printerr("Could not link elements for channel");
     }
 
-    g_object_set(data->source, "location", RTSP_LOCATION, NULL);
-    g_object_set(data->source, "latency", 0, NULL);
+    g_object_set(data->source, "location", location, NULL);
+    g_object_set(data->source, "latency", 100, NULL);
     g_signal_connect(data->source, "pad-added", G_CALLBACK(pad_added_cb), data);
     g_signal_connect(data->source, "select-stream", G_CALLBACK(select_stream_cb), data);
 }
