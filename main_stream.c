@@ -26,11 +26,16 @@ static gboolean select_stream_cb(GstElement *src, guint num, const GstCaps *caps
 
 static void pad_added_cb(GstElement *src, GstPad *src_pad, const RtspData *data);
 
-static GstElement* build_element(const gchar *factory_name, const gchar *prefix, const gchar *suffix);
+static GstElement *build_element(const gchar *factory_name, const gchar *prefix, const gchar *suffix);
 
 static gboolean build_link(GstElement *source, GstElement *sink);
 
-static void build_channel(RtspData *data, GstElement *pipeline, GstElement *sink, const gchar *location, const gchar *prefix);
+static gboolean build_channel(
+    RtspData *data,
+    GstElement *pipeline,
+    GstPad *sink_pad,
+    const gchar *location,
+    const gchar *prefix);
 
 static void error_cb(GstBus *bus, GstMessage *msg, const StreamData *data);
 
@@ -55,14 +60,20 @@ int main(int argc, char *argv[]) {
 
     sink_pad = gst_element_request_pad_simple(data.compose, "sink_%u");
     g_object_set(G_OBJECT(sink_pad), "xpos", 0, "ypos", 0, "width", 1920, "height", 1080, NULL);
+    if (!build_channel(&data.left, data.pipeline, sink_pad, RTSP_LEFT, "left_")) {
+        gst_object_unref(sink_pad);
+        goto fail;
+    }
     gst_object_unref(sink_pad);
 
     sink_pad = gst_element_request_pad_simple(data.compose, "sink_%u");
     g_object_set(G_OBJECT(sink_pad), "xpos", 1920, "ypos", 0, "width", 1920, "height", 1080, NULL);
+    if (!build_channel(&data.right, data.pipeline, sink_pad, RTSP_RIGHT, "right_")) {
+        gst_object_unref(sink_pad);
+        goto fail;
+    }
     gst_object_unref(sink_pad);
 
-    build_channel(&data.left, data.pipeline, data.compose, RTSP_LEFT, "left_");
-    build_channel(&data.right, data.pipeline, data.compose, RTSP_RIGHT, "right_");
 
     bus = gst_element_get_bus(data.pipeline);
     gst_bus_add_signal_watch(bus);
@@ -86,18 +97,24 @@ fail:
     return -1;
 }
 
-static void build_channel(RtspData *data, GstElement *pipeline, GstElement *sink, const gchar *location, const gchar *prefix) {
+static gboolean build_channel(
+    RtspData *data,
+    GstElement *pipeline,
+    GstPad *sink_pad,
+    const gchar *location,
+    const gchar *prefix) {
+    g_autoptr(GstPad) source_pad = NULL;
+
     data->source = build_element("rtspsrc", prefix, "source");
     data->extract = build_element("rtph265depay", prefix, "extract");
     data->parse = build_element("h265parse", prefix, "parse");
     data->decode = build_element("avdec_h265", prefix, "decode");
     data->convert = build_element("videoconvert", prefix, "convert");
     data->flip = build_element("videoflip", prefix, "flip");
-    if (!data->source || !data->extract || !data->parse || !data->decode || !data->convert  || !data->flip ) {
+    if (!data->source || !data->extract || !data->parse || !data->decode || !data->convert || !data->flip) {
         g_printerr("Not all rtsp element could be created.\n");
+        return FALSE;
     }
-
-    g_object_set(data->flip, "method", 4, NULL);
 
     gst_bin_add_many(
         GST_BIN(pipeline),
@@ -112,18 +129,25 @@ static void build_channel(RtspData *data, GstElement *pipeline, GstElement *sink
     if (!build_link(data->extract, data->parse) ||
         !build_link(data->parse, data->decode) ||
         !build_link(data->decode, data->convert) ||
-        !build_link(data->convert, data->flip) ||
-        !build_link(data->flip, sink)) {
+        !build_link(data->convert, data->flip)) {
         g_printerr("Could not link elements for channel");
+        return FALSE;
     }
 
-    g_object_set(data->source, "location", location, NULL);
-    g_object_set(data->source, "latency", RTSP_LATENCY, NULL);
+    source_pad = gst_element_get_static_pad(data->flip, "src");
+    if (GST_PAD_LINK_FAILED(gst_pad_link(source_pad, sink_pad))) {
+        g_print("Could not link flip element to compositor.\n");
+        return FALSE;
+    }
+
+    g_object_set(data->flip, "method", 4, NULL);
+    g_object_set(data->source, "location", location, "protocols", 1, "latency", RTSP_LATENCY, NULL);
     g_signal_connect(data->source, "pad-added", G_CALLBACK(pad_added_cb), data);
     g_signal_connect(data->source, "select-stream", G_CALLBACK(select_stream_cb), data);
+    return TRUE;
 }
 
-static GstElement* build_element(const gchar *factory_name, const gchar *prefix, const gchar *suffix) {
+static GstElement *build_element(const gchar *factory_name, const gchar *prefix, const gchar *suffix) {
     g_autofree const gchar *element_name = g_strconcat(prefix, suffix, NULL);
     GstElement *element = gst_element_factory_make(factory_name, element_name);
     if (!element) {
@@ -143,7 +167,7 @@ static gboolean build_link(GstElement *source, GstElement *sink) {
 static gboolean select_stream_cb(GstElement *src, guint num, const GstCaps *caps, RtspData *data) {
     const gchar *media, *encoding;
 
-    GstStructure *structure = gst_caps_get_structure(caps, 0);
+     GstStructure *structure = gst_caps_get_structure(caps, 0);
     media = gst_structure_get_string(structure, "media");
     encoding = gst_structure_get_string(structure, "encoding-name");
     if (media && encoding && strcmp(media, "video") == 0 && strcmp(media, "H265") != 0) {
@@ -153,13 +177,12 @@ static gboolean select_stream_cb(GstElement *src, guint num, const GstCaps *caps
 }
 
 static void pad_added_cb(GstElement *src, GstPad *src_pad, const RtspData *data) {
+    g_autoptr(GstCaps) src_caps = NULL;
+    g_autoptr(GstPad) sink_pad = NULL;
+    GstStructure *caps_struct = NULL;
     const gchar *src_name = NULL;
     const gchar *src_type = NULL;
     const gchar *caps = NULL;
-    g_autoptr(GstCaps) src_caps = NULL;
-    GstStructure *caps_struct = NULL;
-    g_autoptr(GstPad) sink_pad = NULL;
-    GstPadLinkReturn ret;
 
     src_name = GST_PAD_NAME(src_pad);
     g_print("Source pad '%s' added\n", src_name);
@@ -184,8 +207,7 @@ static void pad_added_cb(GstElement *src, GstPad *src_pad, const RtspData *data)
         return;
     }
 
-    ret = gst_pad_link(src_pad, sink_pad);
-    if (GST_PAD_LINK_FAILED(ret)) {
+    if (GST_PAD_LINK_FAILED(gst_pad_link(src_pad, sink_pad))) {
         g_print("Source pad '%s' type '%s' could not be linked.\n", src_name, src_type);
     } else {
         g_print(
