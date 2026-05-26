@@ -2,6 +2,7 @@
 
 #define RTSP_RIGHT "rtsp://192.168.16.128:554/stream1"
 #define RTSP_LEFT "rtsp://192.168.16.160:554/stream1"
+#define RTSP_LATENCY 120
 
 typedef struct {
     GstElement *source;
@@ -117,7 +118,7 @@ static void build_channel(RtspData *data, GstElement *pipeline, GstElement *sink
     }
 
     g_object_set(data->source, "location", location, NULL);
-    g_object_set(data->source, "latency", 100, NULL);
+    g_object_set(data->source, "latency", RTSP_LATENCY, NULL);
     g_signal_connect(data->source, "pad-added", G_CALLBACK(pad_added_cb), data);
     g_signal_connect(data->source, "select-stream", G_CALLBACK(select_stream_cb), data);
 }
