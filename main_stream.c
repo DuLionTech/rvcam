@@ -34,22 +34,27 @@ static gboolean build_channel(RtspData *data, GstElement *pipeline, GstPad *sink
 
 static void error_cb(GstBus *bus, GstMessage *msg, const StreamData *data);
 
+GST_DEBUG_CATEGORY_STATIC(rvcam);
+#define GST_CAT_DEFAULT rvcam
+
 int main(int argc, char *argv[]) {
     StreamData data = {0};
     GstBus *bus;
     GstPad *sink_pad;
 
     gst_init(&argc, &argv);
+    GST_DEBUG_CATEGORY_INIT(rvcam, "rvcam", 0, "Log for RV Camera Application");
+
     data.pipeline = gst_pipeline_new("rtsp-client");
     data.compose = gst_element_factory_make("compositor", "compositor");
     data.sink = gst_element_factory_make("autovideosink", "sink");
     if (!data.pipeline || !data.sink) {
-        g_printerr("Not all element could be created.\n");
+        GST_ERROR("Not all element could be created.");
         return -1;
     }
     gst_bin_add_many(GST_BIN(data.pipeline), data.compose, data.sink, NULL);
     if (!gst_element_link(data.compose, data.sink)) {
-        g_printerr("Could not link %s to %s", GST_ELEMENT_NAME(data.compose), GST_ELEMENT_NAME(data.sink));
+        GST_ERROR("Could not link %s to %s", GST_ELEMENT_NAME(data.compose), GST_ELEMENT_NAME(data.sink));
         goto fail;
     }
 
@@ -76,7 +81,7 @@ int main(int argc, char *argv[]) {
     gst_object_unref(bus);
 
     if (gst_element_set_state(data.pipeline, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
-        g_printerr("Unable to set the pipeline to the playing state.\n");
+        GST_ERROR("Unable to set the pipeline to the playing state.");
         goto fail;
     }
 
@@ -103,12 +108,12 @@ static gboolean build_channel(
     data->rtsp = build_element("rtspsrc", name, "rtsp");
     data->depay = build_element("rtph265depay", name, "depay");
     data->parse = build_element("h265parse", name, "parse");
-    // data->decode = build_element("nvh265dec", name, "decode");
-    data->decode = build_element("v4l2slh265dec", name, "decode");
+    data->decode = build_element("nvh265dec", name, "decode");
+    // data->decode = build_element("v4l2slh265dec", name, "decode");
     data->convert = build_element("videoconvert", name, "convert");
     data->flip = build_element("videoflip", name, "flip");
     if (!data->rtsp || !data->depay || !data->parse || !data->decode || !data->convert || !data->flip) {
-        g_printerr("Not all rtsp element could be created.\n");
+        GST_ERROR("Not all rtsp element could be created.");
         return FALSE;
     }
 
@@ -126,13 +131,13 @@ static gboolean build_channel(
         !build_link(data->parse, data->decode) ||
         !build_link(data->decode, data->convert) ||
         !build_link(data->convert, data->flip)) {
-        g_printerr("Could not link elements for channel");
+        GST_ERROR("Could not link elements for channel");
         return FALSE;
     }
 
     src_pad = gst_element_get_static_pad(data->flip, "src");
     if (GST_PAD_LINK_FAILED(gst_pad_link(src_pad, sink))) {
-        g_print("Could not link flip element to compositor.\n");
+        GST_INFO("Could not link flip element to compositor.");
         return FALSE;
     }
 
@@ -147,14 +152,14 @@ static GstElement *build_element(const gchar *factory_name, const gchar *prefix,
     g_autofree const gchar *element_name = g_strconcat(prefix, suffix, NULL);
     GstElement *element = gst_element_factory_make(factory_name, element_name);
     if (!element) {
-        g_printerr("Factory %s could not create element %s.\n", factory_name, element_name);
+        GST_ERROR("Factory %s could not create element %s.", factory_name, element_name);
     }
     return element;
 }
 
 static gboolean build_link(GstElement *src, GstElement *sink) {
     if (!gst_element_link(src, sink)) {
-        g_printerr("Could not link %s to %s", GST_ELEMENT_NAME(src), GST_ELEMENT_NAME(sink));
+        GST_ERROR("Could not link %s to %s", GST_ELEMENT_NAME(src), GST_ELEMENT_NAME(sink));
         return FALSE;
     }
     return TRUE;
@@ -181,13 +186,13 @@ static void pad_added_cb(GstElement *src, GstPad *src_pad, const RtspData *data)
     const gchar *caps = NULL;
 
     src_name = GST_PAD_NAME(src_pad);
-    g_print("Source pad '%s' added\n", src_name);
+    GST_INFO("Source pad '%s' added", src_name);
 
     src_caps = gst_pad_get_current_caps(src_pad);
     caps_struct = gst_caps_get_structure(src_caps, 0);
     src_type = gst_structure_get_name(caps_struct);
     caps = gst_caps_to_string(src_caps);
-    g_print("Source pad '%s' type '%s' has %d capabilities: %s\n",
+    GST_INFO("Source pad '%s' type '%s' has %d capabilities: %s",
             src_name,
             src_type,
             gst_caps_get_size(src_caps),
@@ -195,8 +200,8 @@ static void pad_added_cb(GstElement *src, GstPad *src_pad, const RtspData *data)
 
     sink_pad = gst_element_get_static_pad(data->depay, "sink");
     if (gst_pad_is_linked(sink_pad)) {
-        g_printerr(
-            "Source pad '%s' linked to '%s' pad '%s'.\n",
+        GST_ERROR(
+            "Source pad '%s' linked to '%s' pad '%s'.",
             src_name,
             GST_ELEMENT_NAME(data->depay),
             GST_PAD_NAME(sink_pad));
@@ -204,10 +209,10 @@ static void pad_added_cb(GstElement *src, GstPad *src_pad, const RtspData *data)
     }
 
     if (GST_PAD_LINK_FAILED(gst_pad_link(src_pad, sink_pad))) {
-        g_print("Source pad '%s' type '%s' could not be linked.\n", src_name, src_type);
+        GST_INFO("Source pad '%s' type '%s' could not be linked.", src_name, src_type);
     } else {
-        g_print(
-            "Source pad '%s' type '%s' linked to '%s' pad '%s'.\n",
+        GST_INFO(
+            "Source pad '%s' type '%s' linked to '%s' pad '%s'.",
             src_name,
             src_type,
             GST_ELEMENT_NAME(data->depay),
@@ -220,7 +225,7 @@ static void error_cb(GstBus *bus, GstMessage *msg, const StreamData *data) {
     g_autofree gchar *message;
 
     gst_message_parse_error(msg, &error, &message);
-    g_printerr("Error received from element %s: %s\n", GST_OBJECT_NAME(msg->src), error->message);
-    g_printerr("Debug information: %s\n", message ? message : "none");
+    GST_ERROR("Error received from element %s: %s", GST_OBJECT_NAME(msg->src), error->message);
+    GST_ERROR("Debug information: %s", message ? message : "none");
     g_main_loop_quit(data->loop);
 }
