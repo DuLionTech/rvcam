@@ -10,7 +10,6 @@ typedef struct {
     GstElement *parse;
     GstElement *decode;
     GstElement *convert;
-    GstElement *flip;
 } RtspData;
 
 typedef struct {
@@ -111,8 +110,7 @@ static gboolean build_channel(
     data->decode = build_element("nvh265dec", name, "decode");
     // data->decode = build_element("v4l2slh265dec", name, "decode");
     data->convert = build_element("videoconvert", name, "convert");
-    data->flip = build_element("videoflip", name, "flip");
-    if (!data->rtsp || !data->depay || !data->parse || !data->decode || !data->convert || !data->flip) {
+    if (!data->rtsp || !data->depay || !data->parse || !data->decode || !data->convert) {
         GST_ERROR("Not all rtsp element could be created.");
         return FALSE;
     }
@@ -124,24 +122,21 @@ static gboolean build_channel(
         data->parse,
         data->decode,
         data->convert,
-        data->flip,
         NULL);
 
     if (!build_link(data->depay, data->parse) ||
         !build_link(data->parse, data->decode) ||
-        !build_link(data->decode, data->convert) ||
-        !build_link(data->convert, data->flip)) {
+        !build_link(data->decode, data->convert)) {
         GST_ERROR("Could not link elements for channel");
         return FALSE;
     }
 
-    src_pad = gst_element_get_static_pad(data->flip, "src");
+    src_pad = gst_element_get_static_pad(data->convert, "src");
     if (GST_PAD_LINK_FAILED(gst_pad_link(src_pad, sink))) {
-        GST_INFO("Could not link flip element to compositor.");
+        GST_INFO("Could not link convert element to compositor.");
         return FALSE;
     }
 
-    g_object_set(data->flip, "method", 4, NULL);
     g_object_set(data->rtsp, "location", uri, "protocols", 1, "latency", RTSP_LATENCY, NULL);
     g_signal_connect(data->rtsp, "pad-added", G_CALLBACK(pad_added_cb), data);
     g_signal_connect(data->rtsp, "select-stream", G_CALLBACK(select_stream_cb), data);
