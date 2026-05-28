@@ -2,7 +2,9 @@
 
 #define RTSP_RIGHT "rtsp://192.168.16.128:554/stream1"
 #define RTSP_LEFT "rtsp://192.168.16.160:554/stream1"
-#define RTSP_LATENCY 120
+#define RTSP_LATENCY 67
+#define RTSP_DECODER "nvh265dec"
+// #define RTSP_DECODER "v4l2slh265dec"
 
 typedef struct {
     GstElement *rtsp;
@@ -16,6 +18,7 @@ typedef struct {
     RtspData left;
     RtspData right;
     GstElement *compose;
+    GstElement *overlay;
     GstElement *sink;
     GstElement *pipeline;
     GMainLoop *loop;
@@ -46,14 +49,19 @@ int main(int argc, char *argv[]) {
 
     data.pipeline = gst_pipeline_new("rtsp-client");
     data.compose = gst_element_factory_make("compositor", "compositor");
+    data.overlay = gst_element_factory_make("clockoverlay", "date-time");
     data.sink = gst_element_factory_make("autovideosink", "sink");
     if (!data.pipeline || !data.sink) {
         GST_ERROR("Not all element could be created.");
         return -1;
     }
-    gst_bin_add_many(GST_BIN(data.pipeline), data.compose, data.sink, NULL);
-    if (!gst_element_link(data.compose, data.sink)) {
-        GST_ERROR("Could not link %s to %s", GST_ELEMENT_NAME(data.compose), GST_ELEMENT_NAME(data.sink));
+    gst_bin_add_many(GST_BIN(data.pipeline), data.compose, data.overlay, data.sink, NULL);
+    if (!gst_element_link(data.compose, data.overlay)) {
+        GST_ERROR("Could not link %s to %s", GST_ELEMENT_NAME(data.compose), GST_ELEMENT_NAME(data.overlay));
+        goto fail;
+    }
+    if (!gst_element_link(data.overlay, data.sink)) {
+        GST_ERROR("Could not link %s to %s", GST_ELEMENT_NAME(data.overlay), GST_ELEMENT_NAME(data.sink));
         goto fail;
     }
 
@@ -73,6 +81,14 @@ int main(int argc, char *argv[]) {
     }
     gst_object_unref(sink_pad);
 
+    g_object_set(
+        G_OBJECT(data.overlay),
+        "time-format", "%F %T",
+        "font-desc", "Sans 6",
+        "halignment", 1,
+        "valignment", 5,
+        "ypos", 0.0,
+        NULL);
 
     bus = gst_element_get_bus(data.pipeline);
     gst_bus_add_signal_watch(bus);
@@ -107,8 +123,7 @@ static gboolean build_channel(
     data->rtsp = build_element("rtspsrc", name, "rtsp");
     data->depay = build_element("rtph265depay", name, "depay");
     data->parse = build_element("h265parse", name, "parse");
-    data->decode = build_element("nvh265dec", name, "decode");
-    // data->decode = build_element("v4l2slh265dec", name, "decode");
+    data->decode = build_element(RTSP_DECODER, name, "decode");
     data->convert = build_element("videoconvert", name, "convert");
     if (!data->rtsp || !data->depay || !data->parse || !data->decode || !data->convert) {
         GST_ERROR("Not all rtsp element could be created.");
@@ -181,13 +196,11 @@ static void pad_added_cb(GstElement *src, GstPad *src_pad, const RtspData *data)
     const gchar *caps = NULL;
 
     src_name = GST_PAD_NAME(src_pad);
-    GST_INFO("Source pad '%s' added", src_name);
-
     src_caps = gst_pad_get_current_caps(src_pad);
     caps_struct = gst_caps_get_structure(src_caps, 0);
     src_type = gst_structure_get_name(caps_struct);
     caps = gst_caps_to_string(src_caps);
-    GST_INFO("Source pad '%s' type '%s' has %d capabilities: %s",
+    GST_INFO("RTSP pad '%s' type '%s' has %d capabilities: %s",
             src_name,
             src_type,
             gst_caps_get_size(src_caps),
@@ -204,7 +217,7 @@ static void pad_added_cb(GstElement *src, GstPad *src_pad, const RtspData *data)
     }
 
     if (GST_PAD_LINK_FAILED(gst_pad_link(src_pad, sink_pad))) {
-        GST_INFO("Source pad '%s' type '%s' could not be linked.", src_name, src_type);
+        GST_INFO("RTSP pad '%s' type '%s' could not be linked.", src_name, src_type);
     } else {
         GST_INFO(
             "Source pad '%s' type '%s' linked to '%s' pad '%s'.",
