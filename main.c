@@ -26,11 +26,11 @@ typedef struct {
     GMainLoop *loop;
 } StreamData;
 
-static gboolean pipeline_make(StreamData *data);
+static gboolean pipeline_new(StreamData *data);
 
-static gboolean channel_make(ChannelData *data, GstElement *pipeline, GstPad *pad, const gchar *uri, const gchar *name);
+static gboolean channel_new(ChannelData *data, GstElement *pipeline, GstPad *pad, const gchar *uri, const gchar *name);
 
-static GstElement *element_factory_make(const gchar *factory_name, const gchar *prefix, const gchar *suffix);
+static GstElement *element_new(const gchar *factory_name, const gchar *prefix, const gchar *suffix);
 
 static gboolean element_link(GstElement *src, GstElement *sink);
 
@@ -38,7 +38,7 @@ static gboolean select_stream_cb(GstElement *src, guint num, const GstCaps *caps
 
 static void pad_added_cb(GstElement *src, GstPad *src_pad, const ChannelData *data);
 
-static void error_cb(GstBus *bus, GstMessage *msg, const StreamData *data);
+static void message_error_cb(GstBus *bus, GstMessage *msg, const StreamData *data);
 
 GST_DEBUG_CATEGORY_STATIC(rvcam);
 #define GST_CAT_DEFAULT rvcam
@@ -47,12 +47,13 @@ int main(int argc, char *argv[]) {
     GtkWidget *window;
     StreamData data = {0};
 
+    g_setenv("GDK_GL", "gles", TRUE);
     gtk_init(&argc, &argv);
     gst_init(&argc, &argv);
     GST_DEBUG_CATEGORY_INIT(rvcam, "rvcam", 0, "Log for RV Camera Application");
 
     data.pipeline = gst_pipeline_new("rtsp-client");
-    if (!data.pipeline || !pipeline_make(&data)) {
+    if (!data.pipeline || !pipeline_new(&data)) {
         GST_ERROR("Could not create rtsp pipeline");
         goto fail;
     }
@@ -79,20 +80,20 @@ fail:
     return -1;
 }
 
-static gboolean pipeline_make(StreamData *data) {
+static gboolean pipeline_new(StreamData *data) {
     GstBus *bus;
     GstPad *sink_pad;
     GstElement *gl_sink;
 
-    gl_sink = element_factory_make("gtkglsink", "main_", "gtkglsink");
+    gl_sink = element_new("gtkglsink", "main_", "gtkglsink");
     if (!gl_sink) {
-        data->sink = element_factory_make("gtksink", "main_", "gtksink");
+        data->sink = element_new("gtksink", "main_", "gtksink");
         if (!data->sink) {
             return FALSE;
         }
         g_object_get(data->sink, "widget", &data->sink_widget, NULL);
     } else {
-        data->sink = element_factory_make("glsinkbin", "main_", "glsinkbin");
+        data->sink = element_new("glsinkbin", "main_", "glsinkbin");
         if (!data->sink) {
             return FALSE;
         }
@@ -100,8 +101,8 @@ static gboolean pipeline_make(StreamData *data) {
         g_object_get(gl_sink, "widget", &data->sink_widget, NULL);
     }
 
-    data->compose = element_factory_make("compositor", "main_", "compositor");
-    data->overlay = element_factory_make("clockoverlay", "main_", "date-time");
+    data->compose = element_new("compositor", "main_", "compositor");
+    data->overlay = element_new("clockoverlay", "main_", "date-time");
     if (!data->compose || !data->overlay || !data->sink) {
         return FALSE;
     }
@@ -113,7 +114,7 @@ static gboolean pipeline_make(StreamData *data) {
 
     sink_pad = gst_element_request_pad_simple(data->compose, "sink_%u");
     g_object_set(G_OBJECT(sink_pad), "xpos", 0, "ypos", 0, "width", 1920, "height", 1080, NULL);
-    if (!channel_make(&data->left, data->pipeline, sink_pad, RTSP_LEFT, "left_")) {
+    if (!channel_new(&data->left, data->pipeline, sink_pad, RTSP_LEFT, "left_")) {
         gst_object_unref(sink_pad);
         return FALSE;
     }
@@ -121,7 +122,7 @@ static gboolean pipeline_make(StreamData *data) {
 
     sink_pad = gst_element_request_pad_simple(data->compose, "sink_%u");
     g_object_set(G_OBJECT(sink_pad), "xpos", 1920, "ypos", 0, "width", 1920, "height", 1080, NULL);
-    if (!channel_make(&data->right, data->pipeline, sink_pad, RTSP_RIGHT, "right_")) {
+    if (!channel_new(&data->right, data->pipeline, sink_pad, RTSP_RIGHT, "right_")) {
         gst_object_unref(sink_pad);
         return FALSE;
     }
@@ -138,13 +139,13 @@ static gboolean pipeline_make(StreamData *data) {
 
     bus = gst_element_get_bus(data->pipeline);
     gst_bus_add_signal_watch(bus);
-    g_signal_connect(G_OBJECT(bus), "message::error", G_CALLBACK(error_cb), NULL);
+    g_signal_connect(G_OBJECT(bus), "message::error", G_CALLBACK(message_error_cb), NULL);
     gst_object_unref(bus);
 
     return TRUE;
 }
 
-static gboolean channel_make(
+static gboolean channel_new(
     ChannelData *data,
     GstElement *pipeline,
     GstPad *pad,
@@ -152,11 +153,11 @@ static gboolean channel_make(
     const gchar *name) {
     g_autoptr(GstPad) src_pad = NULL;
 
-    data->rtsp = element_factory_make("rtspsrc", name, "rtsp");
-    data->depay = element_factory_make("rtph265depay", name, "depay");
-    data->parse = element_factory_make("h265parse", name, "parse");
-    data->decode = element_factory_make(RTSP_DECODER, name, "decode");
-    data->convert = element_factory_make("videoconvert", name, "convert");
+    data->rtsp = element_new("rtspsrc", name, "rtsp");
+    data->depay = element_new("rtph265depay", name, "depay");
+    data->parse = element_new("h265parse", name, "parse");
+    data->decode = element_new(RTSP_DECODER, name, "decode");
+    data->convert = element_new("videoconvert", name, "convert");
     if (!data->rtsp || !data->depay || !data->parse || !data->decode || !data->convert) {
         GST_ERROR("Not all rtsp element could be created.");
         return FALSE;
@@ -190,7 +191,7 @@ static gboolean channel_make(
     return TRUE;
 }
 
-static GstElement *element_factory_make(const gchar *factory_name, const gchar *prefix, const gchar *suffix) {
+static GstElement *element_new(const gchar *factory_name, const gchar *prefix, const gchar *suffix) {
     g_autofree const gchar *element_name = g_strconcat(prefix, suffix, NULL);
     GstElement *element = gst_element_factory_make(factory_name, element_name);
     if (!element) {
@@ -260,7 +261,7 @@ static void pad_added_cb(GstElement *src, GstPad *src_pad, const ChannelData *da
     }
 }
 
-static void error_cb(GstBus *bus, GstMessage *msg, const StreamData *data) {
+static void message_error_cb(GstBus *bus, GstMessage *msg, const StreamData *data) {
     g_autofree GError *error;
     g_autofree gchar *message;
 
